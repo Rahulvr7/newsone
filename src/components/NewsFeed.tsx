@@ -2,9 +2,15 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { FlatList, Text, View, StyleSheet, ActivityIndicator, TextInput, Image, RefreshControl, TouchableOpacity } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { fetchNews } from '../services/apiService';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { RootStackParamList } from '../models/navigation.model';
+
+type NewsFeedNavigationProp = StackNavigationProp<RootStackParamList, 'NewsFeed'>;
 
 const NewsFeed = () => {
   const [articles, setArticles] = useState<any[]>([]);
+  const [displayedArticles, setDisplayedArticles] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [query, setQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<string>('publishedAt');
@@ -12,17 +18,20 @@ const NewsFeed = () => {
   const [hasMore, setHasMore] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
 
+  const navigation = useNavigation<NewsFeedNavigationProp>();
+
   const fetchAndSetNews = async (reset: boolean = false) => {
     if (loading) return;
 
     setLoading(true);
     const newsArticles = await fetchNews(query, sortBy, page);
+    const filteredArticles = newsArticles.filter((article: { title: string; }) => article.title !== '[Removed]');
     if (reset) {
-      setArticles(newsArticles);
+      setArticles(filteredArticles);
     } else {
-      setArticles(prevArticles => [...prevArticles, ...newsArticles]);
+      setArticles(prevArticles => [...prevArticles, ...filteredArticles]);
     }
-    setHasMore(newsArticles.length > 0);
+    setHasMore(filteredArticles.length > 0);
     setLoading(false);
     setRefreshing(false);
   };
@@ -30,6 +39,12 @@ const NewsFeed = () => {
   useEffect(() => {
     fetchAndSetNews(true);
   }, [query, sortBy]);
+
+  useEffect(() => {
+    const start = (page - 1) * 10;
+    const end = start + 10;
+    setDisplayedArticles(articles.slice(start, end));
+  }, [page, articles]);
 
   const handleNextPage = () => {
     if (hasMore && !loading) {
@@ -53,7 +68,11 @@ const NewsFeed = () => {
     fetchAndSetNews(true);
   }, [query, sortBy]);
 
-  const shouldShowPaginator = articles.length > 10;
+  const shouldShowPaginator = articles.length >= 10;
+
+  const handleOpenArticle = (url: string, title: string) => {
+    navigation.navigate('WebViewScreen', { url, title });
+  };
 
   return (
     <View style={styles.container}>
@@ -63,7 +82,7 @@ const NewsFeed = () => {
           placeholder="Search..."
           onChangeText={setQuery}
           value={query}
-          placeholderTextColor="#FFFFFF" 
+          placeholderTextColor="#FFFFFF"
         />
         <Picker
           selectedValue={sortBy}
@@ -75,14 +94,13 @@ const NewsFeed = () => {
         </Picker>
       </View>
       <FlatList
-        data={articles}
+        data={displayedArticles}
         keyExtractor={(item, index) => `${item.url}-${index}`}
         renderItem={({ item }) => (
-          <View style={styles.article}>
-            <View style={styles.textContainer}>
-              <Text style={styles.title}>{item.title}</Text>
-              <Text style={styles.description}>{item.description}</Text>
-            </View>
+          <TouchableOpacity
+            style={styles.article}
+            onPress={() => handleOpenArticle(item.url, item.title)}
+          >
             {item.urlToImage && (
               <Image
                 source={{ uri: item.urlToImage }}
@@ -90,7 +108,13 @@ const NewsFeed = () => {
                 resizeMode="cover"
               />
             )}
-          </View>
+            <View style={styles.textContainer}>
+            <Text style={styles.title}>{item.title}</Text>
+            {!item.urlToImage && item.description ? (
+            <Text style={styles.description}>{item.description}</Text>
+          ) : null}
+            </View>
+          </TouchableOpacity>
         )}
         refreshControl={
           <RefreshControl
@@ -110,6 +134,7 @@ const NewsFeed = () => {
               >
                 <Text style={styles.pageButtonText}>{'<'}</Text>
               </TouchableOpacity>
+              <Text style={styles.pageNumberText}>{`Page ${page}`}</Text>
               <TouchableOpacity
                 onPress={handleNextPage}
                 disabled={!hasMore || loading}
@@ -118,7 +143,7 @@ const NewsFeed = () => {
                 <Text style={styles.pageButtonText}>{'>'}</Text>
               </TouchableOpacity>
             </View>
-          ) : null 
+          ) : null
         }
       />
     </View>
@@ -128,18 +153,18 @@ const NewsFeed = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#14171A', 
+    backgroundColor: '#14171A',
   },
   header: {
     padding: 10,
-    backgroundColor: '#1DA1F2', 
+    backgroundColor: '#1DA1F2',
     borderBottomWidth: 1,
     borderBottomColor: '#1A91DA',
-    flexDirection: 'column', 
+    flexDirection: 'column',
   },
   searchInput: {
     height: 40,
-    borderColor: '#ffffff80', 
+    borderColor: '#ffffff80',
     borderWidth: 1,
     borderRadius: 5,
     marginBottom: 10,
@@ -149,7 +174,7 @@ const styles = StyleSheet.create({
   },
   picker: {
     height: 50,
-    width: 120, 
+    width: 180,
     color: '#FFFFFF',
   },
   article: {
@@ -167,10 +192,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
+    flex: 1,
+    marginLeft: 10,
   },
   description: {
     fontSize: 14,
     color: '#B0B3B8',
+    marginLeft: 10
   },
   image: {
     width: 100,
@@ -181,20 +209,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     padding: 10,
-    backgroundColor: '#1B1D1F', 
+    backgroundColor: '#1B1D1F',
   },
   pageButton: {
     padding: 10,
     marginHorizontal: 10,
     borderRadius: 5,
-    backgroundColor: '#1DA1F2', 
+    backgroundColor: '#1DA1F2',
   },
   disabledButton: {
-    backgroundColor: '#333', 
+    backgroundColor: '#333',
   },
   pageButtonText: {
     fontSize: 20,
     color: '#FFFFFF',
+  },
+  pageNumberText: {
+    fontSize: 18,
+    color: '#FFFFFF',
+    alignSelf: 'center',
+    marginHorizontal: 20,
   },
 });
 
