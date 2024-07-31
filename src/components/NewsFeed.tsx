@@ -1,77 +1,167 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { FlatList, Text, View, StyleSheet, ActivityIndicator, TextInput, Image, RefreshControl, TouchableOpacity } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
-import { fetchNews } from '../services/apiService';
-import { useNavigation } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
-import { RootStackParamList } from '../models/navigation.model';
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  Text,
+  View,
+  StyleSheet,
+  ActivityIndicator,
+  TextInput,
+  Image,
+  RefreshControl,
+  TouchableOpacity,
+  Modal,
+  ScrollView,
+} from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import { StackNavigationProp } from "@react-navigation/stack";
+import { RootStackParamList } from "../models/navigation.model";
+import { fetchNews } from "../services/apiService";
+import { Article, SortOption } from "../models/news.model";
 
-type NewsFeedNavigationProp = StackNavigationProp<RootStackParamList, 'NewsFeed'>;
+type NewsFeedNavigationProp = StackNavigationProp<
+  RootStackParamList,
+  "NewsFeed"
+>;
 
 const NewsFeed = () => {
-  const [articles, setArticles] = useState<any[]>([]);
-  const [displayedArticles, setDisplayedArticles] = useState<any[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [query, setQuery] = useState<string>('');
-  const [sortBy, setSortBy] = useState<string>('publishedAt');
+  const [query, setQuery] = useState<string>("");
   const [page, setPage] = useState<number>(1);
-  const [hasMore, setHasMore] = useState<boolean>(true);
-  const [refreshing, setRefreshing] = useState<boolean>(false);
-
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [groupedArticles, setGroupedArticles] = useState<{
+    [key: string]: Article[];
+  }>({});
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<SortOption>(SortOption.ByMonth);
+  const [modalVisible, setModalVisible] = useState<boolean>(false);
   const navigation = useNavigation<NewsFeedNavigationProp>();
 
-  const fetchAndSetNews = async (reset: boolean = false) => {
-    if (loading) return;
+  useEffect(() => {
+    const fetchNewsData = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const newsArticles = await fetchNews(
+          query,
+          sortBy === SortOption.ByDay ? "publishedAt" : "relevancy",
+          page
+        );
+        const filteredArticles = newsArticles.filter(
+          (article: Article) => article.title !== "[Removed]"
+        );
+        setArticles(filteredArticles);
+      } catch (error: any) {
+        if (error?.response && error?.response.status === 0) {
+          setError("No internet connection.");
+        } else {
+          setError("Failed to fetch news");
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    setLoading(true);
-    const newsArticles = await fetchNews(query, sortBy, page);
-    const filteredArticles = newsArticles.filter((article: { title: string; }) => article.title !== '[Removed]');
-    if (reset) {
-      setArticles(filteredArticles);
-    } else {
-      setArticles(prevArticles => [...prevArticles, ...filteredArticles]);
-    }
-    setHasMore(filteredArticles.length > 0);
-    setLoading(false);
-    setRefreshing(false);
-  };
+    fetchNewsData();
+  }, [query, sortBy, page]);
 
   useEffect(() => {
-    fetchAndSetNews(true);
-  }, [query, sortBy]);
+    const groupArticles = (articles: Article[], sortBy: SortOption) => {
+      if (sortBy === SortOption.ByMonth) {
+        return articles.reduce(
+          (acc: { [key: string]: Article[] }, article: Article) => {
+            const month = new Date(article.publishedAt).toLocaleString(
+              "default",
+              { month: "long", year: "numeric" }
+            );
+            if (!acc[month]) acc[month] = [];
+            acc[month].push(article);
+            return acc;
+          },
+          {}
+        );
+      } else if (sortBy === SortOption.ByYear) {
+        return articles.reduce(
+          (acc: { [key: string]: Article[] }, article: Article) => {
+            const year = new Date(article.publishedAt).getFullYear().toString();
+            if (!acc[year]) acc[year] = [];
+            acc[year].push(article);
+            return acc;
+          },
+          {}
+        );
+      } else {
+        return articles.reduce(
+          (acc: { [key: string]: Article[] }, article: Article) => {
+            const day = new Date(article.publishedAt).toLocaleDateString();
+            if (!acc[day]) acc[day] = [];
+            acc[day].push(article);
+            return acc;
+          },
+          {}
+        );
+      }
+    };
 
-  useEffect(() => {
-    const start = (page - 1) * 10;
-    const end = start + 10;
-    setDisplayedArticles(articles.slice(start, end));
-  }, [page, articles]);
+    setGroupedArticles(groupArticles(articles, sortBy));
+  }, [articles, sortBy]);
+
+  const handleRefresh = useCallback(() => {
+    setPage(1);
+    setArticles([]);
+  }, []);
 
   const handleNextPage = () => {
-    if (hasMore && !loading) {
-      setPage(prevPage => prevPage + 1);
+    if (!loading) {
+      setPage((prevPage) => prevPage + 1);
     }
   };
 
   const handlePreviousPage = () => {
     if (page > 1 && !loading) {
-      setPage(prevPage => prevPage - 1);
+      setPage((prevPage) => prevPage - 1);
     }
   };
 
-  useEffect(() => {
-    fetchAndSetNews();
-  }, [page]);
+  const handleSortBy = (sortOption: SortOption) => {
+    setSortBy(sortOption);
+    setModalVisible(false);
+  };
 
-  const handleRefresh = useCallback(() => {
-    setRefreshing(true);
-    setPage(1);
-    fetchAndSetNews(true);
-  }, [query, sortBy]);
+  const handleOpenArticle = (article: Article) => {
+    navigation.navigate("NewsDetail", { article });
+  };
 
-  const shouldShowPaginator = articles.length >= 10;
+  const renderArticleItem = ({ item }: { item: Article }) => (
+    <TouchableOpacity
+      style={styles.article}
+      onPress={() => handleOpenArticle(item)}
+    >
+      {item.urlToImage && (
+        <Image
+          source={{ uri: item.urlToImage }}
+          style={styles.image}
+          resizeMode="cover"
+        />
+      )}
+      <View style={styles.textContainer}>
+        <Text style={styles.title} numberOfLines={3} ellipsizeMode="tail">{item.title}</Text>
+        {!item.urlToImage && item.description ? (
+          <Text style={styles.description} numberOfLines={3} ellipsizeMode="tail">{item.description}</Text>
+        ) : null}
+      </View>
+    </TouchableOpacity>
+  );
 
-  const handleOpenArticle = (url: string, title: string) => {
-    navigation.navigate('WebViewScreen', { url, title });
+  const renderGroupedArticles = () => {
+    return Object.entries(groupedArticles).map(([group, articles]) => (
+      <View key={group}>
+        <Text style={styles.groupHeader}>{group}</Text>
+        {articles.map((article, idx) => (
+          <View key={article.url + idx}>
+            {renderArticleItem({ item: article })}
+          </View>
+        ))}
+      </View>
+    ));
   };
 
   return (
@@ -84,68 +174,63 @@ const NewsFeed = () => {
           value={query}
           placeholderTextColor="#FFFFFF"
         />
-        <Picker
-          selectedValue={sortBy}
-          style={styles.picker}
-          onValueChange={(itemValue) => setSortBy(itemValue)}
+        <TouchableOpacity
+          style={styles.sortButton}
+          onPress={() => setModalVisible(true)}
         >
-          <Picker.Item label="Latest" value="publishedAt" />
-          <Picker.Item label="Popularity" value="popularity" />
-        </Picker>
+          <Text style={styles.sortButtonText}>Sort</Text>
+        </TouchableOpacity>
       </View>
-      <FlatList
-        data={displayedArticles}
-        keyExtractor={(item, index) => `${item.url}-${index}`}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.article}
-            onPress={() => handleOpenArticle(item.url, item.title)}
-          >
-            {item.urlToImage && (
-              <Image
-                source={{ uri: item.urlToImage }}
-                style={styles.image}
-                resizeMode="cover"
-              />
-            )}
-            <View style={styles.textContainer}>
-            <Text style={styles.title}>{item.title}</Text>
-            {!item.urlToImage && item.description ? (
-            <Text style={styles.description}>{item.description}</Text>
-          ) : null}
-            </View>
-          </TouchableOpacity>
-        )}
+      {loading && <ActivityIndicator size="large" color="#1DA1F2" />}
+      {error && <Text style={styles.errorText}>{error}</Text>}
+      <ScrollView
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-          />
+          <RefreshControl refreshing={loading} onRefresh={handleRefresh} />
         }
-        ListFooterComponent={
-          loading ? (
-            <ActivityIndicator size="large" color="#1DA1F2" />
-          ) : shouldShowPaginator ? (
-            <View style={styles.pagination}>
-              <TouchableOpacity
-                onPress={handlePreviousPage}
-                disabled={page === 1 || loading}
-                style={[styles.pageButton, page === 1 && styles.disabledButton]}
-              >
-                <Text style={styles.pageButtonText}>{'<'}</Text>
-              </TouchableOpacity>
-              <Text style={styles.pageNumberText}>{`Page ${page}`}</Text>
-              <TouchableOpacity
-                onPress={handleNextPage}
-                disabled={!hasMore || loading}
-                style={[styles.pageButton, !hasMore && styles.disabledButton]}
-              >
-                <Text style={styles.pageButtonText}>{'>'}</Text>
-              </TouchableOpacity>
-            </View>
-          ) : null
-        }
-      />
+      >
+        {renderGroupedArticles()}
+      </ScrollView>
+      <View style={styles.pagination}>
+        <TouchableOpacity
+          onPress={handlePreviousPage}
+          disabled={page === 1 || loading}
+          style={[styles.pageButton, page === 1 && styles.disabledButton]}
+        >
+          <Text style={styles.pageButtonText}>{"<"}</Text>
+        </TouchableOpacity>
+        <Text style={styles.pageNumberText}>{`Page ${page}`}</Text>
+        <TouchableOpacity
+          onPress={handleNextPage}
+          disabled={loading}
+          style={styles.pageButton}
+        >
+          <Text style={styles.pageButtonText}>{">"}</Text>
+        </TouchableOpacity>
+      </View>
+      <Modal visible={modalVisible} transparent={true} animationType="slide">
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <TouchableOpacity
+              style={styles.sortOptionButton}
+              onPress={() => handleSortBy(SortOption.ByDay)}
+            >
+              <Text style={styles.sortOptionText}>By Day</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.sortOptionButton}
+              onPress={() => handleSortBy(SortOption.ByMonth)}
+            >
+              <Text style={styles.sortOptionText}>By Month</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.sortOptionButton}
+              onPress={() => handleSortBy(SortOption.ByYear)}
+            >
+              <Text style={styles.sortOptionText}>By Year</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -153,82 +238,139 @@ const NewsFeed = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#14171A',
+    backgroundColor: "#14171A",
   },
   header: {
     padding: 10,
-    backgroundColor: '#1DA1F2',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1A91DA',
-    flexDirection: 'column',
+    backgroundColor: "#14171A",
+    borderBottomWidth: 0.4,
+    borderBottomColor: "#F5F8FA",
+    flexDirection: "row",
+    gap: 10,
   },
   searchInput: {
+    flex: 1,
     height: 40,
-    borderColor: '#ffffff80',
+    borderColor: "#ffffff80",
     borderWidth: 1,
     borderRadius: 5,
     marginBottom: 10,
     paddingHorizontal: 10,
-    color: '#FFFFFF',
-    backgroundColor: '#1B1D1F',
+    color: "#FFFFFF",
+    backgroundColor: "#1B1D1F",
   },
-  picker: {
-    height: 50,
-    width: 180,
-    color: '#FFFFFF',
+  sortButton: {
+    padding: 5,
+    backgroundColor: "#1DA1F2",
+    borderRadius: 10,
+    width: 80,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sortButtonText: {
+    fontSize: 16,
+    color: "#FFFFFF",
+    fontWeight: "500",
+  },
+  sortOptionButton: {
+    padding: 15,
+    backgroundColor: "#1B1D1F",
+    alignItems: "center",
+    justifyContent: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: "#333"
+
+  },
+  sortOptionText: {
+    fontSize: 16,
+    color: "#FFFFFF",
+    fontWeight: "500",
   },
   article: {
-    flexDirection: 'row',
+    flexDirection: "row",
     padding: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
-    alignItems: 'center',
+    borderBottomColor: "#333",
+    alignItems: "center",
   },
   textContainer: {
     flex: 1,
-    marginRight: 10,
+    marginLeft: 10,
   },
   title: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    flex: 1,
-    marginLeft: 10,
+    fontWeight: "bold",
+    color: "#FFFFFF",
   },
   description: {
     fontSize: 14,
-    color: '#B0B3B8',
-    marginLeft: 10
+    color: "#D4D4D4",
+    textAlign: "left"
   },
   image: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
+    width: 80,
+    height: 80,
+    borderRadius: 5,
+  },
+  groupHeader: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#1DA1F2",
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#333",
   },
   pagination: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    padding: 10,
-    backgroundColor: '#1B1D1F',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 5,
   },
   pageButton: {
-    padding: 10,
-    marginHorizontal: 10,
-    borderRadius: 5,
-    backgroundColor: '#1DA1F2',
+    padding: 5,
+    backgroundColor: "#1DA1F2",
+    borderRadius: 25, // Set to half of button height if height is 50
+    width: 40, // Set width and height to ensure circular shape
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
   },
   disabledButton: {
-    backgroundColor: '#333',
+    backgroundColor: "#1A91DA80",
   },
   pageButtonText: {
-    fontSize: 20,
-    color: '#FFFFFF',
+    fontSize: 16,
+    color: "#FFFFFF",
+    fontWeight: "bold",
   },
   pageNumberText: {
+    fontSize: 16,
+    color: "#FFFFFF",
+    marginHorizontal: 10,
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 20,
+  },
+  modalContent: {
+    backgroundColor: "#14171A",
+    width: "60%",
+    borderRadius: 20
+  },
+  modalTitle: {
+    color: "#FFFFFF",
     fontSize: 18,
-    color: '#FFFFFF',
-    alignSelf: 'center',
-    marginHorizontal: 20,
+    fontWeight: "bold",
+    marginBottom: 15,
+    borderRadius: 20
+  },
+  errorText: {
+    color: "red",
+    textAlign: "center",
+    margin: 10,
   },
 });
 
