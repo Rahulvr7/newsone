@@ -330,8 +330,8 @@ const styles = StyleSheet.create({
   pageButton: {
     padding: 5,
     backgroundColor: "#1DA1F2",
-    borderRadius: 25, // Set to half of button height if height is 50
-    width: 40, // Set width and height to ensure circular shape
+    borderRadius: 25,
+    width: 40,
     height: 40,
     alignItems: "center",
     justifyContent: "center",
