@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Text,
   View,
@@ -6,7 +6,6 @@ import {
   ActivityIndicator,
   TextInput,
   Image,
-  RefreshControl,
   TouchableOpacity,
   Modal,
   ScrollView,
@@ -104,11 +103,6 @@ const NewsFeed = () => {
     setGroupedArticles(groupArticles(articles, sortBy));
   }, [articles, sortBy]);
 
-  const handleRefresh = useCallback(() => {
-    setPage(1);
-    setArticles([]);
-  }, []);
-
   const handleNextPage = () => {
     if (!loading) {
       setPage((prevPage) => prevPage + 1);
@@ -183,11 +177,7 @@ const NewsFeed = () => {
       </View>
       {loading && <ActivityIndicator size="large" color="#1DA1F2" />}
       {error && <Text style={styles.errorText}>{error}</Text>}
-      <ScrollView
-        refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={handleRefresh} />
-        }
-      >
+      <ScrollView>
         {renderGroupedArticles()}
       </ScrollView>
       <View style={styles.pagination}>
@@ -214,19 +204,19 @@ const NewsFeed = () => {
               style={styles.sortOptionButton}
               onPress={() => handleSortBy(SortOption.ByDay)}
             >
-              <Text style={styles.sortOptionText}>By Day</Text>
+              <Text style={styles.sortOptionText}>Today</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.sortOptionButton}
               onPress={() => handleSortBy(SortOption.ByMonth)}
             >
-              <Text style={styles.sortOptionText}>By Month</Text>
+              <Text style={styles.sortOptionText}>This Month</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.sortOptionButton}
               onPress={() => handleSortBy(SortOption.ByYear)}
             >
-              <Text style={styles.sortOptionText}>By Year</Text>
+              <Text style={styles.sortOptionText}>This Year</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -242,6 +232,7 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: 10,
+    paddingTop: 20,
     backgroundColor: "#14171A",
     borderBottomWidth: 0.4,
     borderBottomColor: "#F5F8FA",

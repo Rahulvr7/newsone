@@ -1,8 +1,7 @@
 import axios from 'axios';
 
-// const API_KEY = '1eb9ce705fd9447d8eba1ae40a028a1d';
-const API_KEY = 'b1f880e05f5948b1965534419f3ead89';
-const BASE_URL = 'https://newsapi.org/v2';
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL!;
+const API_KEY = process.env.EXPO_PUBLIC_API_KEY!;
 
 export type ApiParams = {
     q: string;

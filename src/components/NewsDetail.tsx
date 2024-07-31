@@ -48,7 +48,7 @@ const NewsDetail = ({ route }: NewsDetailProps) => {
           {new Date(article.publishedAt).toDateString()}
         </Text>
         {article.author && (
-          <Text style={styles.author}>by {article.author}</Text>
+          <Text style={styles.author} numberOfLines={1}>by {article.author}</Text>
         )}
       </View>
       <Text style={styles.content}>{displayDescription}</Text>
