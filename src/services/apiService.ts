@@ -30,7 +30,7 @@ export const fetchNews = async (
         const response = await axios.get(`${BASE_URL}/everything`, { params });
         return response.data.articles;
     } catch (error) {
-        console.error('Error fetching news:', error);
+        console.error('Error fetching news');
         return [];
     }
 };
