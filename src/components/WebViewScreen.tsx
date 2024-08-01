@@ -10,7 +10,7 @@ interface WebViewScreenProps {
     route: WebViewScreenRouteProp;
 }
 
-const WebViewScreen: React.FC<WebViewScreenProps> = ({ route }) => {
+const WebViewScreen = ({ route }: WebViewScreenProps ) => {
     const { url } = route.params;
     return (
         <View style={styles.container}>
